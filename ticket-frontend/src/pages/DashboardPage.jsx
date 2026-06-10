@@ -44,6 +44,7 @@ const DashboardPage = ({ onNavigate }) => {
   // Estado para el modal del ticket generado
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [generatedTicket, setGeneratedTicket] = useState(null);
+  const [calculatedTotal, setCalculatedTotal] = useState(null);
 
   // Estado para cobro de ticket
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -126,14 +127,40 @@ const DashboardPage = ({ onNavigate }) => {
       }
     }
   };
+  const fetchTotal = async () => {
+    if (paymentData.qrString && paymentData.idType && paymentData.idPay) {
+      try {
+        const response = await ticketService.amount({
+          qrString: paymentData.qrString,
+          idType: paymentData.idType,
+          idPay: paymentData.idPay
+        });
 
-  useEffect(() => {
-    isMounted.current = true;
-    if (user && !isLoadingData.current) {
-      loadDashboardData();
+        if (response.result) {
+          setCalculatedTotal(response.total);
+        }
+      } catch (err) {
+        console.error("Error calculando total:", err);
+      }
     }
-    return () => { isMounted.current = false; };
-  }, [user]);
+  };
+
+// Usamos un useEffect para disparar el cálculo cuando cambien los inputs del modal
+// 1. Efecto para la carga inicial del Dashboard
+useEffect(() => {
+  isMounted.current = true;
+  if (user && !isLoadingData.current) {
+    loadDashboardData();
+  }
+  return () => { isMounted.current = false; };
+}, [user]); // Solo se dispara cuando el usuario cambia
+
+// 2. Efecto para el cálculo del pago (Solo se dispara si el modal está abierto)
+useEffect(() => {
+  if (showPaymentModal) {
+    fetchTotal();
+  }
+}, [paymentData.idType, paymentData.idPay, paymentData.qrString, showPaymentModal]);
 
   const handleCreateTicket = async (e) => {
     e.preventDefault();
@@ -230,7 +257,7 @@ const cleanFilters = () => {
       });
 
       if (response.result) {
-        setAlert({ show: true, message: 'Pago procesado exitosamente', type: 'success' });
+        setAlert({ show: true, message: `Pago procesado, total: ${response.total}`, type: 'success' });
         setShowPaymentModal(false);
         setPaymentData({ qrString: '', idPay: '', idType: '' });
         await loadDashboardData();
@@ -413,7 +440,12 @@ const cleanFilters = () => {
                         <tr key={`${ticket.idTicket}-${index}`} className="text-slate-700">
                           <td className="py-3 font-bold">{ticket.placaVehiculo}</td>
                           <td className="py-3">
-                            {ticket.horaEntrada ? new Date(ticket.horaEntrada).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
+                            {ticket.horaEntrada ? new Date(ticket.horaEntrada).toLocaleTimeString(['es-GT'], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              hour12: true,
+                              timeZone: 'UTC'
+                            }) : '---'}
                           </td>
                           <td className="py-3">
                             {ticket.pagado && !ticket.statusTicket ? (
@@ -548,6 +580,12 @@ const cleanFilters = () => {
                   <ChevronRight size={16} className="rotate-90" />
                 </div>
               </div>
+              {calculatedTotal !== null && (
+                <div className="bg-green-50 p-4 rounded-xl border border-green-200 flex justify-between items-center my-2">
+                  <span className="text-green-700 font-bold text-sm">Total a cobrar:</span>
+                  <span className="text-green-800 font-black text-xl">Q.{calculatedTotal}</span>
+                </div>
+              )}
 
               <div className="flex gap-3 mt-4">
                 <Button 
