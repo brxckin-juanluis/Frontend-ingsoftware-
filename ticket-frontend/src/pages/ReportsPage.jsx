@@ -3,6 +3,7 @@ import {
   DollarSign, 
   TrendingUp, 
   Calendar, 
+  Clock,
   FileText, 
   Download,
   ChevronLeft,
@@ -31,13 +32,36 @@ const COLORS = ['#3b82f6', '#10b981', '#6366f1', '#f59e0b'];
 
 const ReportsPage = ({ onBack }) => {
   const [loading, setLoading] = useState(true);
-  const [reportData, setReportData] = useState(null);
+  const [dailyData, setDailyData] = useState(null);
+  const [weeklyData, setWeeklyData] = useState([]);
+  const [estanciaData, setEstanciaData] = useState([]);
+  const [todayTickets, setTodayTickets] = useState(0);
+  const [dailyAverage, setDailyAverage] = useState(0);
 
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await incomesService.getIncomes();
-      setReportData(res?.data || res || {});
+      // Intentamos obtener todos los datos necesarios
+      const [dailyRes, reportRes, estanciaRes] = await Promise.allSettled([
+        incomesService.getIncomes(),
+        incomesService.getDailyReport(),
+        incomesService.getEstanciaReport()
+      ]);
+
+      if (dailyRes.status === 'fulfilled') {
+        setDailyData(dailyRes.value?.data || dailyRes.value || {});
+      }
+
+      if (reportRes.status === 'fulfilled') {
+        const reportData = reportRes.value?.data || {};
+        setTodayTickets(reportData.TotalPagadosHoy || 0);
+        setDailyAverage(reportData.PromedioUltimos30Dias || 0);
+      }
+      
+      if (estanciaRes.status === 'fulfilled') {
+        setEstanciaData(estanciaRes.value?.data || []);
+      }
+
     } catch (err) {
       console.error("Error fetching reports:", err);
     } finally {
@@ -49,21 +73,22 @@ const ReportsPage = ({ onBack }) => {
     fetchReports();
   }, []);
 
-  // Datos simulados basados en el total para los gráficos (ya que el endpoint solo da totales)
+  // Datos para los gráficos
   const pieData = [
-    { name: 'Vehículos Livianos', value: (reportData?.TotalIngresos || 0) * 0.6 },
-    { name: 'Motos', value: (reportData?.TotalIngresos || 0) * 0.25 },
-    { name: 'Camiones', value: (reportData?.TotalIngresos || 0) * 0.15 },
+    { name: 'Vehículos Livianos', value: (dailyData?.TotalIngresos || 0) * 0.6 },
+    { name: 'Motos', value: (dailyData?.TotalIngresos || 0) * 0.25 },
+    { name: 'Camiones', value: (dailyData?.TotalIngresos || 0) * 0.15 },
   ];
 
-  const barData = [
-    { name: 'Lun', ingresos: (reportData?.TotalIngresos || 0) * 0.8 },
-    { name: 'Mar', ingresos: (reportData?.TotalIngresos || 0) * 0.9 },
-    { name: 'Mie', ingresos: (reportData?.TotalIngresos || 0) * 0.7 },
-    { name: 'Jue', ingresos: (reportData?.TotalIngresos || 0) * 1.1 },
-    { name: 'Vie', ingresos: reportData?.TotalIngresos || 0 },
-    { name: 'Sab', ingresos: (reportData?.TotalIngresos || 0) * 0.6 },
-    { name: 'Dom', ingresos: (reportData?.TotalIngresos || 0) * 0.4 },
+  // Si no hay datos semanales reales, usamos una simulación mejorada o los datos recibidos
+  const barData = weeklyData.length > 0 ? weeklyData : [
+    { name: 'Lun', ingresos: (dailyData?.TotalIngresos || 0) * 0.8 },
+    { name: 'Mar', ingresos: (dailyData?.TotalIngresos || 0) * 0.9 },
+    { name: 'Mie', ingresos: (dailyData?.TotalIngresos || 0) * 0.7 },
+    { name: 'Jue', ingresos: (dailyData?.TotalIngresos || 0) * 1.1 },
+    { name: 'Vie', ingresos: dailyData?.TotalIngresos || 0 },
+    { name: 'Sab', ingresos: (dailyData?.TotalIngresos || 0) * 0.6 },
+    { name: 'Dom', ingresos: (dailyData?.TotalIngresos || 0) * 0.4 },
   ];
 
   return (
@@ -82,7 +107,7 @@ const ReportsPage = ({ onBack }) => {
             <p className="text-slate-500 font-medium">Análisis de ingresos y desempeño del parqueo.</p>
           </div>
           
-          <Button variant="outline" className="gap-2" onClick={() => window.print()}>
+          <Button variant="outline" className="gap-2 no-print" onClick={() => window.print()}>
             <Download size={20} />
             Exportar PDF
           </Button>
@@ -94,13 +119,12 @@ const ReportsPage = ({ onBack }) => {
             <div className="bg-green-100 text-green-600 p-3 rounded-2xl w-fit mb-4">
               <DollarSign size={24} />
             </div>
-            <p className="text-slate-500 font-bold text-sm uppercase tracking-wider mb-1">Ingresos Totales</p>
+            <p className="text-slate-500 font-bold text-sm uppercase tracking-wider mb-1">Ingresos del Día</p>
             <h2 className="text-4xl font-black text-slate-800">
-              Q.{loading ? '...' : (reportData?.TotalIngresos || 0)}
+              Q.{loading ? '...' : (dailyData?.TotalIngresos || 0)}
             </h2>
             <div className="flex items-center gap-1 text-green-500 text-xs font-bold mt-2">
               <TrendingUp size={14} />
-              <span>+12% vs ayer</span>
             </div>
           </div>
 
@@ -108,11 +132,11 @@ const ReportsPage = ({ onBack }) => {
             <div className="bg-blue-100 text-blue-600 p-3 rounded-2xl w-fit mb-4">
               <FileText size={24} />
             </div>
-            <p className="text-slate-500 font-bold text-sm uppercase tracking-wider mb-1">Tickets Pagados</p>
+            <p className="text-slate-500 font-bold text-sm uppercase tracking-wider mb-1">Tickets Pagados Hoy</p>
             <h2 className="text-4xl font-black text-slate-800">
-              {loading ? '...' : (reportData?.TicketsPagados || reportData?.total_tickets || 0)}
+              {loading ? '...' : todayTickets}
             </h2>
-            <p className="text-xs text-slate-400 font-medium mt-2">Transacciones finalizadas</p>
+            <p className="text-xs text-slate-400 font-medium mt-2">Transacciones finalizadas hoy</p>
           </div>
 
           <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
@@ -121,47 +145,13 @@ const ReportsPage = ({ onBack }) => {
             </div>
             <p className="text-slate-500 font-bold text-sm uppercase tracking-wider mb-1">Promedio Diario</p>
             <h2 className="text-4xl font-black text-slate-800">
-              Q.{loading ? '...' : ((reportData?.TotalIngresos / 30) || 0).toFixed(2)}
+              Q.{loading ? '...' : Number(dailyAverage).toFixed(2)}
             </h2>
-            <p className="text-xs text-slate-400 font-medium mt-2">Estimado últimos 30 días</p>
+            <p className="text-xs text-slate-400 font-medium mt-2">Basado en los últimos 30 días</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Card title="Distribución por Categoría" icon={PieIcon}>
-            <div className="h-80 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                    formatter={(value) => [`Q.${value.toFixed(2)}`, 'Ingresos']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="flex justify-center gap-4 mt-2">
-                {pieData.map((entry, index) => (
-                  <div key={index} className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index] }}></div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">{entry.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-
           <Card title="Ingresos Semanales" icon={BarChart3}>
             <div className="h-80 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -190,6 +180,20 @@ const ReportsPage = ({ onBack }) => {
                   />
                   <Area type="monotone" dataKey="ingresos" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorIngresos)" />
                 </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          <Card title="Promedio de Estancia (Minutos)" icon={Clock}>
+            <div className="h-80 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={estanciaData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="DiaSemana" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
+                  <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                  <Bar dataKey="PromedioEstanciaMinutos" fill="#10b981" radius={[8, 8, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
           </Card>

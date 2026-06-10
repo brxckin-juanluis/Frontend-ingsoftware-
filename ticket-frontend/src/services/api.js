@@ -33,12 +33,12 @@ const apiFetch = async (endpoint, options = {}) => {
     // Si la respuesta no es OK, intentamos obtener el cuerpo del error
     if (!response.ok) {
       let errorData = {};
+      const errorText = await response.text();
+      
       try {
-        errorData = await response.json();
+        errorData = JSON.parse(errorText);
       } catch (e) {
-        // Si no es JSON, capturamos el texto
-        const textError = await response.text();
-        errorData = { message: textError || response.statusText };
+        errorData = { message: errorText || response.statusText };
       }
 
       console.error(`[API Error] ${response.status} ${endpoint}:`, errorData);
@@ -160,8 +160,18 @@ export const modelService = {
   })
 };
 
+export const catalogService = {
+  update: (data) => apiFetch('/update/catalog', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  })
+};
+
 export const incomesService = {
-  getIncomes: () => apiFetch('/retrieve/incomes')
+  getIncomes: () => apiFetch('/retrieve/incomes'),
+  getWeeklyIncomes: () => apiFetch('/retrieve/weekly-incomes'),
+  getDailyReport: () => apiFetch('/retrieve/daily-incomes'),
+  getEstanciaReport: () => apiFetch('/retrieve/stay-report')
 };
 
 export const getUserInfo ={

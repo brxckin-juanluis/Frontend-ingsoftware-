@@ -8,9 +8,10 @@ import {
   Truck,
   Layers,
   Search,
-  ChevronLeft
+  ChevronLeft,
+  Edit
 } from 'lucide-react';
-import { brandService, typeService, modelService } from '../services/api';
+import { brandService, typeService, modelService, catalogService } from '../services/api';
 import { useAuth } from '../Context/AuthContext';
 import Card from '../Components/ui/Card';
 import Button from '../Components/ui/Button';
@@ -31,6 +32,9 @@ const CatalogPage = ({ onBack }) => {
   });
   const [newType, setNewType] = useState({ description: '', rate: '' });
   const [newModel, setNewModel] = useState({ name: '', idBrand: '', idType: ''});
+  const [editingItem, setEditingItem] = useState(null);
+  const [calculatedTotal, setCalculatedTotal] = useState(null);
+  const [updateType, setUpdateType] = useState({description:'', rate: ''});
   
   const [brandsList, setBrandsList] = useState([]); // For model creation
   const [typesList, setTypesList] = useState([]); // Para los modelos
@@ -72,31 +76,64 @@ const CatalogPage = ({ onBack }) => {
     fetchData();
   }, [activeTab]);
 
-  const handleCreate = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    
     try {
-      if (activeTab === 'brands') {
-        // La API requiere name, description e idUser
-        const brandPayload = {
-          name: newBrand.name,
-          description: newBrand.description,
-          idUser: user?.idUser || user?.id || 1
-        };
-        await brandService.create(brandPayload);
-        setNewBrand({ name: '', description: '' });
-      } else if (activeTab === 'types') {
-        await typeService.create(newType);
-        setNewType({ description: '', rate: '' });
-      } else if (activeTab === 'models') {
-        console.log(newModel);
-        await modelService.create(newModel);
-        setNewModel({ name: '', idBrand: '', idType: '', description: '' });
+      if (editingItem) {
+        // 1. Identificar correctamente el ID basándonos en la pestaña activa
+        let idValue = activeTab === 'brands' ? editingItem.idMarca : 
+                      activeTab === 'types' ? editingItem.idTipo : 
+                      editingItem.idModelo;
+
+        // 2. Construir el payload asegurando que todos los campos existan
+        const payload = {
+          table: activeTab === 'brands' ? 'MARCA' : activeTab === 'types' ? 'TIPO' : 'MODELOS',
+          id: idValue,
+          name: activeTab === 'brands' ? newBrand.name : 
+                activeTab === 'types' ? newType.description : 
+                newModel.name,
+          description: activeTab === 'brands' ? newBrand.description : null,
+          rate: activeTab === 'types' ? newType.rate : null,
+          // Asegúrate de que idBrand y idType no sean undefined o string vacío
+          idReference: activeTab === 'models' ? (newModel.idBrand || null) : null,
+          status: activeTab === 'models' ? (newModel.idType || null) : 1
+      };
+
+        console.log("Payload enviado al servicio:", payload);
+
+        // 3. Llamada al servicio (usando el objeto completo)
+        const response = await catalogService.update(payload);
+
+        if (response.result) {
+          alert("Actualizado exitosamente");
+        } else {
+          throw new Error(response.message || "Error al actualizar");
+        }
+
+      } else {
+        // --- Lógica de Creación (se mantiene igual) ---
+        if (activeTab === 'brands') {
+          await brandService.create({ name: newBrand.name, description: newBrand.description });
+          setNewBrand({ name: '', description: '' });
+        } else if (activeTab === 'types') {
+          await typeService.create({ description: newType.description, rate: newType.rate });
+          setNewType({ description: '', rate: '' });
+        } else if (activeTab === 'models') {
+          await modelService.create(newModel);
+          setNewModel({ name: '', idBrand: '', idType: '' });
+        }
+        alert("Creado exitosamente");
       }
+
+      // Limpieza post-acción
       setShowForm(false);
+      setEditingItem(null);
       fetchData();
-      alert("Creado exitosamente");
+
     } catch (err) {
+      console.error("Error en handleSubmit:", err);
       alert("Error: " + err.message);
     } finally {
       setLoading(false);
@@ -124,7 +161,7 @@ const CatalogPage = ({ onBack }) => {
             <p className="text-slate-500 font-medium">Gestiona marcas, modelos y tipos de vehículos.</p>
           </div>
           
-          <Button onClick={() => setShowForm(!showForm)} className="gap-2">
+          <Button onClick={() => { setEditingItem(null); setNewBrand({name:'', description:''}); setNewType({description:'', rate:''}); setNewModel({name:'', idBrand:'', idType:''}); setShowForm(true); }} className="gap-2">
             <Plus size={20} />
             Nuevo Registro
           </Button>
@@ -186,12 +223,28 @@ const CatalogPage = ({ onBack }) => {
                           <p className="text-xs text-slate-500 font-bold uppercase">{item.nombreModelo}</p>
                         )}
                         {activeTab === 'types' && (
-                          <p className="text-xs text-green-600 font-black">Tarifa: Q.{item.rate || item.tarifa || item.tarifaHora || 0}</p>
+                          <p className="text-xs text-green-600 font-black">Multiplicador: x{item.multiplicador_tarifa|| 0}</p>
                         )}
                       </div>
-                      <button className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-                        <Trash2 size={18} />
-                      </button>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            console.log(item);
+                            setEditingItem(item);
+                            setShowForm(true);
+                            // Pre-fill form
+                            if (activeTab === 'brands') setNewBrand({ name: item.nombreMarca || item.name || '', description: item.descripcionMarca || '' });
+                            else if (activeTab === 'types') setNewType({ description: item.nombreTipo || item.description || '', rate: item.multiplicador_tarifa || '' });
+                            else if (activeTab === 'models') setNewModel({ name: item.nombreModelo || '', idBrand: item.idMarca || '', idType: item.idTipo || ''});
+                          }}
+                          className="p-2 text-slate-300 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Edit size={18} />
+                        </button>
+                        <button className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -206,8 +259,9 @@ const CatalogPage = ({ onBack }) => {
           {/* Form Side */}
           <div>
             {showForm ? (
-              <Card title="Nuevo Registro" icon={Plus} className="sticky top-24 border-blue-100 shadow-xl shadow-blue-50">
-                <form onSubmit={handleCreate} className="flex flex-col gap-4">
+              <Card title={editingItem ? "Editar Registro" : "Nuevo Registro"} icon={Plus} className="sticky top-24 border-blue-100 shadow-xl shadow-blue-50">
+
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                   {activeTab === 'brands' && (
                     <>
                       <Input 
