@@ -92,6 +92,12 @@ export const ticketService = {
     method: 'PUT',
     body: JSON.stringify(data),
   }),
+  filter: (params) =>{
+    const queryString = new URLSearchParams(params).toString();
+    return apiFetch(`/retrieve/filter?${queryString}`,{
+      method:'GET'
+    });
+  },
   getToday: () => apiFetch('/retrieve/tickets',{
     method:'GET'
   })

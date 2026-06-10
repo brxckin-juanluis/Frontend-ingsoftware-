@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, 
   Clock, 
-  DollarSign, 
+  DollarSign,
   LogOut, 
   Sparkles, 
   ShieldAlert,
@@ -18,6 +18,7 @@ import { fetchGeminiText } from '../services/geminiService';
 import Card from '../Components/ui/Card';
 import Button from '../Components/ui/Button';
 import Input from '../Components/ui/Input';
+import Alert from  '../Components/ui/Alert';
 import TicketPrint from '../Components/TicketPrint';
 import { useReactToPrint } from 'react-to-print';
 
@@ -31,9 +32,12 @@ const DashboardPage = ({ onNavigate }) => {
   const [tickets, setTickets] = useState([]);
   const [aiInsight, setAiInsight] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+
+  // Constante para alertas
+  const [alert, setAlert] = useState({ show: false, message: '', type: ''});
   
   // Estado para creación de ticket
-  const [newTicket, setNewTicket] = useState({ placa: '', idType: '' });
+  const [newTicket, setNewTicket] = useState({ placa: '', idType: '1' });
   const [createLoading, setCreateLoading] = useState(false);
   const [vehicleTypes, setVehicleTypes] = useState([]);
 
@@ -46,6 +50,9 @@ const DashboardPage = ({ onNavigate }) => {
   const [paymentData, setPaymentData] = useState({ qrString: '', idPay: '', idType: '' });
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState([]);
+
+  // Filtros para ticktes
+  const [newFilter, setNewFilter] = useState({qrCode: '',licensePlate:'',initialDate:'',finalDate:''});
   
   const componentRef = useRef();
   const handlePrint = useReactToPrint({
@@ -130,8 +137,9 @@ const DashboardPage = ({ onNavigate }) => {
 
   const handleCreateTicket = async (e) => {
     e.preventDefault();
+    console.log(newTicket);
     if (!newTicket.placa || !newTicket.idType) {
-      alert("Por favor ingrese la placa y seleccione un tipo de vehículo");
+      setAlert({ show: true, message: 'Por favor ingrese la placa y un tipo de vehiculo', type: 'error' });
       return;
     }
     
@@ -153,15 +161,38 @@ const DashboardPage = ({ onNavigate }) => {
         
         setGeneratedTicket(ticketInfo);
         setShowTicketModal(true);
-        setNewTicket({ placa: '', idType: '', qrString: '' });
+        setNewTicket({ placa: '', idType: '1', qrString: '' });
         await loadDashboardData();
       }
     } catch (err) {
-      alert("Error al emitir ticket: " + err.message);
+      setAlert({ show: true, message: `Error al crear ticket: ${err.message}`, type: 'error' });
     } finally {
       setCreateLoading(false);
     }
   };
+
+ const handleFilterSearch = async (e) => {
+  e?.preventDefault();
+  setLoading(true);
+  try {
+    const response = await ticketService.filter(newFilter);
+    
+    // Si la respuesta es el array directo, úsalo. Si viene en una propiedad .data, úsala.
+    const dataToSet = Array.isArray(response) ? response : (response.data || []);
+    console.log(dataToSet);
+    setTickets(dataToSet);
+    
+  } catch (err) {
+    console.error("Error al filtrar:", err);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const cleanFilters = () => {
+  setNewFilter({ qrCode: '', licensePlate: '', initialDate: '', finalDate: '' });
+  loadDashboardData();
+}
 
   const handleAiInsight = async () => {
     setAiLoading(true);
@@ -185,7 +216,7 @@ const DashboardPage = ({ onNavigate }) => {
   const handlePayment = async (e) => {
     e.preventDefault();
     if (!paymentData.qrString || !paymentData.idPay || !paymentData.idType) {
-      alert("Por favor complete todos los campos de cobro");
+      setAlert({ show: true, message: 'Por favor complete todos los campos para procesar el pago', type: 'error' });
       return;
     }
 
@@ -199,18 +230,33 @@ const DashboardPage = ({ onNavigate }) => {
       });
 
       if (response.result) {
-        alert(`Cobro realizado exitosamente. Total: Q.${response.total || '0'}`);
+        setAlert({ show: true, message: 'Pago procesado exitosamente', type: 'success' });
         setShowPaymentModal(false);
         setPaymentData({ qrString: '', idPay: '', idType: '' });
         await loadDashboardData();
         console.log(tickets);
       }
     } catch (err) {
-      alert("Error al procesar cobro: " + err.message);
+      setAlert({ show: true, message: `Error al procesar el cobro: ${err.message}`, type: 'error' });
     } finally {
       setPaymentLoading(false);
     }
   };
+
+  //Funcion para abrir el model de cobro con los datos Colocados directamente.
+  const preparePayment = (ticket) => {
+  // Construimos el código QR esperado, ajustado a tu formato
+  const qrString = `IS-${ticket.idTicket}-GP3`;
+  
+  // Prellenamos el estado del modal
+  setPaymentData({ 
+    ...paymentData, 
+    qrString: qrString 
+  });
+  
+  // Abrimos el modal
+  setShowPaymentModal(true);
+};
 
   const handleSecurityReport = async () => {
     alert("Analizando situación de seguridad con IA...");
@@ -315,49 +361,85 @@ const DashboardPage = ({ onNavigate }) => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Columna principal: Tickets */}
           <div className="lg:col-span-2">
-            <Card title="Últimos Tickets Generados" icon={ChevronRight}>
+            <Card title="Gestión de Tickets" icon={ChevronRight}>
+              {/* Barra de Filtros */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-slate-50 rounded-xl">
+                <Input 
+                  placeholder="QR Code" 
+                  value={newFilter.qrCode.toUpperCase()}
+                  onChange={(e) => setNewFilter({...newFilter, qrCode: e.target.value})}
+                />
+                <Input 
+                  placeholder="Placa" 
+                  value={newFilter.licensePlate.toUpperCase()}
+                  onChange={(e) => setNewFilter({...newFilter, licensePlate: e.target.value})}
+                />
+                <Input 
+                  type="date" 
+                  value={newFilter.initialDate}
+                  onChange={(e) => setNewFilter({...newFilter, initialDate: e.target.value})}
+                />
+                <Input
+                  type="date"
+                  value={newFilter.finalDate}
+                  onChange={(e) => setNewFilter({...newFilter, finalDate: e.target.value})}
+                />
+                <Button onClick={handleFilterSearch} className="w-full">
+                  Buscar
+                </Button>
+                <Button onClick={cleanFilters} className="w-full">
+                  Limpiar Filtros
+                </Button>
+              </div>
+
+              {/* Cambia esta parte en tu renderizado */}
               {loading ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="animate-pulse h-12 bg-slate-100 rounded-xl"></div>
-                  ))}
-                </div>
-              ) : tickets.length > 0 ? (
+                <div className="space-y-4">Cargando...</div>
+              ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
+                    {/* ... dentro de tu tabla ... */}
                     <thead>
                       <tr className="text-slate-400 text-sm uppercase tracking-wider">
                         <th className="pb-4 font-bold">Placa</th>
                         <th className="pb-4 font-bold">Entrada</th>
                         <th className="pb-4 font-bold">Estado</th>
-                        <th className="pb-4 font-bold">Codigo</th>
+                        <th className="pb-4 font-bold">Código</th>
+                        <th className="pb-4 font-bold">Acción</th> {/* Nueva columna */}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {tickets.map((ticket, idx) => (
-                        <tr key={ticket.idTicket || ticket.id || idx} className="text-slate-700">
-                          <td className="py-3 font-bold">{ticket.placaVehiculo || ticket.placa || ticket.licensePlate}</td>
+                      {tickets.map((ticket, index) => (
+                        <tr key={`${ticket.idTicket}-${index}`} className="text-slate-700">
+                          <td className="py-3 font-bold">{ticket.placaVehiculo}</td>
                           <td className="py-3">
-                            {ticket.horaEntrada || ticket.fechaEntrada || ticket.entryDate 
-                              ? new Date(ticket.horaEntrada || ticket.fechaEntrada || ticket.entryDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                              : '---'}
+                            {ticket.horaEntrada ? new Date(ticket.horaEntrada).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '---'}
                           </td>
                           <td className="py-3">
-                            <span className={`px-2 py-1 text-xs font-bold rounded-full ${ticket.pagado ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                              {ticket.pagado ? 'Pagado' : 'Activo'}
+                            {ticket.pagado && !ticket.statusTicket ? (
+                              <span className="px-2 py-1 text-xs font-bold rounded-full bg-red-300 text-black-700">
+                                Pagado
+                              </span>
+                            ): (
+                              <span className="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700">
+                                Activo
                             </span>
+                            )}
                           </td>
-                          <td className='py-3'>
-                            IS-{ticket.idTicket||ticket.id}-GP3
+                          <td className='py-3'>IS-{ticket.idTicket}-GP3</td>
+                          <td className="py-3">
+                            {/* Botón que dispara la función de preparar pago */}
+                            <button 
+                              onClick={() => preparePayment(ticket)}
+                              className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                              <DollarSign size={14} />
+                            </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-slate-400">
-                  <p>No hay tickets registrados hoy.</p>
                 </div>
               )}
             </Card>
@@ -371,29 +453,10 @@ const DashboardPage = ({ onNavigate }) => {
                   placeholder="Número de Placa" 
                   icon={Car}
                   value={newTicket.placa}
-                  onChange={(e) => setNewTicket({ ...newTicket, placa: e.target.value.toUpperCase() })}
+                  // Solo actualizamos la placa. idType se mantiene '1' automáticamente por el estado inicial.
+                  onChange={(e) => setNewTicket(prev => ({ ...prev, placa: e.target.value.toUpperCase() }))}
                   required
                 />
-                
-                <div className="relative">
-                  <select
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-3 appearance-none font-medium"
-                    value={newTicket.idType}
-                    onChange={(e) => setNewTicket({ ...newTicket, idType: e.target.value })}
-                    required
-                  >
-                    <option value="">Seleccione Tipo de Vehículo</option>
-                    {vehicleTypes.map((type) => (
-                      <option key={type.idType || type.id || type.idTipo} value={type.idType || type.id || type.idTipo}>
-                        {type.nombreTipo || type.descripcion || type.name || 'Tipo ' + (type.idType || type.id || type.idTipo)}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">
-                    <ChevronRight size={16} className="rotate-90" />
-                  </div>
-                </div>
-
                 <Button 
                   type="submit" 
                   className="w-full" 
@@ -402,27 +465,6 @@ const DashboardPage = ({ onNavigate }) => {
                   Registrar Entrada
                 </Button>
               </form>
-            </Card>
-
-            <Card title="Asistente IA" icon={Sparkles} className="bg-gradient-to-br from-indigo-50 to-white">
-              <p className="text-sm text-slate-600 mb-4">
-                Obtén recomendaciones basadas en el estado actual de tu parqueo.
-              </p>
-              
-              {aiInsight && (
-                <div className="p-4 bg-white/60 border border-indigo-100 rounded-xl mb-4 text-sm text-indigo-900 italic">
-                  "{aiInsight}"
-                </div>
-              )}
-
-              <Button 
-                variant="ai" 
-                className="w-full" 
-                onClick={handleAiInsight}
-                loading={aiLoading}
-              >
-                Generar Insight
-              </Button>
             </Card>
 
             <Card title="Acciones de Seguridad" icon={ShieldAlert}>
@@ -567,6 +609,13 @@ const DashboardPage = ({ onNavigate }) => {
             </div>
           </div>
         </div>
+      )}
+      {alert.show && (
+        <Alert 
+          message={alert.message} 
+          type={alert.type} 
+          onClose={() => setAlert({ ...alert, show: false })} 
+        />
       )}
     </div>
   );
