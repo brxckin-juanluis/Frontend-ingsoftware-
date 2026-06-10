@@ -11,11 +11,13 @@ import {
   ChevronLeft
 } from 'lucide-react';
 import { brandService, typeService, modelService } from '../services/api';
+import { useAuth } from '../Context/AuthContext';
 import Card from '../Components/ui/Card';
 import Button from '../Components/ui/Button';
 import Input from '../Components/ui/Input';
 
 const CatalogPage = ({ onBack }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('brands');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState([]);
@@ -23,25 +25,41 @@ const CatalogPage = ({ onBack }) => {
   
   // Forms
   const [showForm, setShowForm] = useState(false);
-  const [newBrand, setNewBrand] = useState({ name: '' });
+  const [newBrand, setNewBrand] = useState({ 
+    name: '',
+    description: ''
+  });
   const [newType, setNewType] = useState({ description: '', rate: '' });
-  const [newModel, setNewModel] = useState({ name: '', idBrand: '' });
+  const [newModel, setNewModel] = useState({ name: '', idBrand: '', idType: ''});
   
   const [brandsList, setBrandsList] = useState([]); // For model creation
+  const [typesList, setTypesList] = useState([]); // Para los modelos
 
   const fetchData = async () => {
     setLoading(true);
     try {
       if (activeTab === 'brands') {
-        const res = await brandService.getAll();
-        setData(res?.data?.brands || res?.brands || []);
+        const res = await brandService.getAll({ table: 'MARCA' });
+        // La API devuelve los datos en res.data
+        setData(res?.data || []);
       } else if (activeTab === 'types') {
-        const res = await typeService.getAll();
-        setData(res?.data || res || []);
+        const res = await typeService.getAll({ table: 'TIPO' });
+        setData(res?.data || []);
       } else if (activeTab === 'models') {
-        const res = await brandService.getAll(); // Catalog usually has all
-        setData(res?.data?.models || res?.models || []);
-        setBrandsList(res?.data?.brands || res?.brands || []);
+        const res = await modelService.getAll({ table: 'MODELOS' });
+        setData(res?.data || []);
+        
+        // Cargar marcas para el selector de modelos
+        const brandsRes = await brandService.getAll({ table: 'MARCA' });
+        const brandsData = brandsRes?.data || [];
+        setBrandsList(brandsData);
+        console.log('Marcas cargadas:', brandsData);
+        
+        // Cargar los tipos de vehiculos
+        const typesRes = await typeService.getAll({ table: 'TIPO' });
+        const typesData = typesRes?.data || [];
+        setTypesList(typesData);
+        console.log('Tipos cargados:', typesData);
       }
     } catch (err) {
       console.error("Error fetching catalog data:", err);
@@ -59,14 +77,21 @@ const CatalogPage = ({ onBack }) => {
     setLoading(true);
     try {
       if (activeTab === 'brands') {
-        await brandService.create(newBrand);
-        setNewBrand({ name: '' });
+        // La API requiere name, description e idUser
+        const brandPayload = {
+          name: newBrand.name,
+          description: newBrand.description,
+          idUser: user?.idUser || user?.id || 1
+        };
+        await brandService.create(brandPayload);
+        setNewBrand({ name: '', description: '' });
       } else if (activeTab === 'types') {
         await typeService.create(newType);
         setNewType({ description: '', rate: '' });
       } else if (activeTab === 'models') {
+        console.log(newModel);
         await modelService.create(newModel);
-        setNewModel({ name: '', idBrand: '' });
+        setNewModel({ name: '', idBrand: '', idType: '', description: '' });
       }
       setShowForm(false);
       fetchData();
@@ -79,7 +104,7 @@ const CatalogPage = ({ onBack }) => {
   };
 
   const filteredData = data.filter(item => {
-    const text = (item.name || item.descripcion || item.description || '').toLowerCase();
+    const text = (item.nombreMarca || item.name || item.descripcion || item.nombreModelo || '').toLowerCase();
     return text.includes(searchTerm.toLowerCase());
   });
 
@@ -155,13 +180,13 @@ const CatalogPage = ({ onBack }) => {
                     <div key={idx} className="p-4 bg-white border border-slate-100 rounded-2xl flex justify-between items-center group hover:border-blue-200 hover:shadow-md transition-all">
                       <div>
                         <p className="font-black text-slate-800">
-                          {item.name || item.descripcion || item.description}
+                          {item.nombreTipo || item.descripcion || item.nombreMarca || item.name || item.nombreModelo || item.description}
                         </p>
-                        {activeTab === 'models' && item.brandName && (
-                          <p className="text-xs text-slate-500 font-bold uppercase">{item.brandName}</p>
+                        {activeTab === 'models' && item.nombreMarca && (
+                          <p className="text-xs text-slate-500 font-bold uppercase">{item.nombreModelo}</p>
                         )}
                         {activeTab === 'types' && (
-                          <p className="text-xs text-green-600 font-black">Tarifa: Q.{item.rate || item.tarifa || 0}</p>
+                          <p className="text-xs text-green-600 font-black">Tarifa: Q.{item.rate || item.tarifa || item.tarifaHora || 0}</p>
                         )}
                       </div>
                       <button className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
@@ -184,12 +209,20 @@ const CatalogPage = ({ onBack }) => {
               <Card title="Nuevo Registro" icon={Plus} className="sticky top-24 border-blue-100 shadow-xl shadow-blue-50">
                 <form onSubmit={handleCreate} className="flex flex-col gap-4">
                   {activeTab === 'brands' && (
-                    <Input 
-                      placeholder="Nombre de la Marca" 
-                      value={newBrand.name}
-                      onChange={(e) => setNewBrand({ name: e.target.value.toUpperCase() })}
-                      required
-                    />
+                    <>
+                      <Input 
+                        placeholder="Nombre de la Marca" 
+                        value={newBrand.name}
+                        onChange={(e) => setNewBrand({ ...newBrand, name: e.target.value.toUpperCase() })}
+                        required
+                      />
+                      <Input
+                         placeholder="Descripción de la marca"
+                         value={newBrand.description}
+                         onChange={(e) => setNewBrand({ ...newBrand, description: e.target.value })}
+                         required
+                      />
+                    </>
                   )}
 
                   {activeTab === 'models' && (
@@ -202,7 +235,7 @@ const CatalogPage = ({ onBack }) => {
                       >
                         <option value="">Seleccione Marca</option>
                         {brandsList.map(b => (
-                          <option key={b.idBrand || b.id} value={b.idBrand || b.id}>{b.name}</option>
+                          <option key={b.idMarca || b.id} value={b.idMarca || b.id}>{b.nombreMarca}</option>
                         ))}
                       </select>
                       <Input 
@@ -211,6 +244,17 @@ const CatalogPage = ({ onBack }) => {
                         onChange={(e) => setNewModel({ ...newModel, name: e.target.value.toUpperCase() })}
                         required
                       />
+                      <select
+                        className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl p-3 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                        value={newModel.idType}
+                        onChange={(e)=> setNewModel({ ...newModel, idType: e.target.value})}
+                        required
+                      >
+                        <option value="">Seleccione el tipo de vehiculo</option>
+                        {typesList.map(t=>(
+                          <option key={t.idTipo || t.id} value={t.idTipo || t.id}>{t.nombreTipo}</option>
+                        ))}
+                      </select>
                     </>
                   )}
 

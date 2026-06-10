@@ -108,7 +108,12 @@ export const spaceService = {
 };
 
 export const brandService = {
-  getAll: () => apiFetch('/retrieve/catalog'), // Usualmente los catalogos traen marcas/modelos
+  getAll: (params) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiFetch(`/retrieve/catalog?${queryString}`,{
+      method:'GET'
+    });
+  }, // Usualmente los catalogos traen marcas/modelos
   create: (data) => apiFetch('/create/brands', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -130,6 +135,13 @@ export const typeService = {
 };
 
 export const modelService = {
+  getAll: (params) =>{
+    const queryString = new URLSearchParams(params).toString();
+
+    return apiFetch(`/retrieve/catalog?${queryString}`,{
+      method:'GET'
+    });
+  },
   create: (data) => apiFetch('/create/models', {
     method: 'POST',
     body: JSON.stringify(data),
