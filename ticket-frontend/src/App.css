@@ -1,0 +1,15 @@
+/* Reseteo simple para asegurar que Tailwind tome el control total */
+#root {
+  width: 100%;
+  margin: 0 auto;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+/* Puedes agregar estilos globales personalizados aquí si los necesitas */
